@@ -16,4 +16,16 @@ export class MailService {
 
     await this.mailerService.sendMail(mailOptions);
   }
+
+  async sendOtpViaEmail(to: string, otp: string) {
+    const mailOptions = {
+      from: 'Auth-backend service',
+      to: to,
+      subject: 'OTP Request',
+      html: `<p>Your otp code is :<strong>${otp}</strong></p>.
+      <br /> Provide this otp to verify your account`,
+    };
+
+    await this.mailerService.sendMail(mailOptions);
+  }
 }

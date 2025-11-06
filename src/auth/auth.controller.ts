@@ -7,6 +7,7 @@ import { ChangePasswordDto } from './dtos/change-passord.dto';
 import { AuthGuard } from '../guards/auth.guard';
 import { ForgotPasswordDto } from './dtos/forgot-password.dto';
 import { ResetPasswordDto } from './dtos/reset-password.dto';
+import { RequestOTPDto } from './dtos/request.OTP.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -15,13 +16,24 @@ export class AuthController {
   //TODO : Post Signup
   @Post('signup')
   async signUp(@Body() signupData: SignupDto) {
-    return this.authService.signup(signupData);
+    await this.authService.signup(signupData);
+    return {
+      message: 'User creaed successfully and Otp sent to email',
+    };
   }
 
   //TODO : Post login
   @Post('login')
   async login(@Body() credentials: LoginDto) {
     return this.authService.login(credentials);
+  }
+
+  @Post('resend-otp')
+  async resendOtp(@Body('email') email: string) {
+    await this.authService.resendOtp(email);
+    return {
+      message: 'new Otp is sent please check your email',
+    };
   }
   //TODO : Post refresh token
   @Post('refresh')

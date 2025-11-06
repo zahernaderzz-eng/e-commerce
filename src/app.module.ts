@@ -2,13 +2,18 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
-import { User } from './auth/entityes/user.entity';
+
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
-import { RefreshToken } from './auth/entityes/refresh-token.entity';
-import { ResetToken } from './auth/entityes/reset-token-entity';
+import { RefreshToken } from './auth/entities/refresh-token.entity';
+import { ResetToken } from './auth/entities/reset-token-entity';
 import { MailModule } from './mail/mail.module';
 import { ConfigModule } from '@nestjs/config';
+import { OTPModule } from './otp/otp.module';
+import { OTP } from './otp/entities/otp.entity';
+import { UserModule } from './user/user.module';
+import { User } from './user/entities/user.entity';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -23,12 +28,14 @@ import { ConfigModule } from '@nestjs/config';
       username: 'postgres',
       password: '1234',
       database: 'e-commerce database',
-      entities: [User, RefreshToken, ResetToken],
+      entities: [User, RefreshToken, ResetToken, OTP],
       synchronize: true,
     }),
     JwtModule.register({ global: true, secret: 'secret123' }),
     AuthModule,
     MailModule,
+    OTPModule,
+    UserModule,
   ],
   controllers: [AppController],
   providers: [AppService],

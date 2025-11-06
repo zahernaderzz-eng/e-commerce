@@ -7,62 +7,84 @@ import {
 } from '@nestjs/common';
 import { SignupDto } from './dtos/signup.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { User } from './entityes/user.entity';
 import { MoreThanOrEqual, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dtos/login.dto';
 import { JwtService } from '@nestjs/jwt';
-import { RefreshToken } from './entityes/refresh-token.entity';
+import { RefreshToken } from './entities/refresh-token.entity';
 import { randomUUID } from 'crypto';
-
 import { nanoid } from 'nanoid';
-import { ResetToken } from './entityes/reset-token-entity';
+import { ResetToken } from './entities/reset-token-entity';
 import { MailService } from '../mail/mail.service';
+import { OTPService } from '../otp/otp.service';
+import { OTPType } from '../otp/type/OTPType';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectRepository(User) private repo: Repository<User>,
     @InjectRepository(ResetToken) private resetToken: Repository<ResetToken>,
     @InjectRepository(RefreshToken)
     private refreshToken: Repository<RefreshToken>,
     private jwtSetvice: JwtService,
     private mailService: MailService,
+    private otpService: OTPService,
+    private userService: UserService,
   ) {}
 
   async signup(signupData: SignupDto) {
     const { email, password, name } = signupData;
-    const emailInUse = await this.repo.findOneBy({ email });
+    const emailInUse = await this.userService.findOneBy({ email });
     if (emailInUse) {
       throw new BadRequestException('Email already in use');
     }
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await this.repo.create({
+    const user = await this.userService.create({
       name,
       email,
       password: hashedPassword,
     });
 
-    await this.repo.save(user);
+    await this.userService.save(user);
+    const otp = await this.otpService.generateOTP(user, OTPType.OTP);
+
+    await this.mailService.sendOtpViaEmail(email, otp);
   }
 
   async login(credentials: LoginDto) {
-    const { email, password } = credentials;
-    const user = await this.repo.findOneBy({ email });
+    const { email, password, otp } = credentials;
+    const user = await this.userService.findOne({
+      where: { email },
+    });
+
     if (!user) {
-      throw new UnauthorizedException('wrong credentials');
+      throw new UnauthorizedException('Wrong credentials');
     }
+
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
-      throw new UnauthorizedException('wrong credentials');
+      throw new UnauthorizedException('Wrong credentials');
+    }
+
+    if (user.accountStatus === 'unverified') {
+      if (!otp) {
+        return {
+          message: 'Your account is not verified. Please provide your OTP.',
+        };
+      }
+
+      await this.verifyToken(user.id, otp);
+
+      user.accountStatus = 'verified';
+      await this.userService.save(user);
     }
 
     return this.generateUserTokens(user.id);
   }
 
   async forgotPassword(email: string) {
-    const user = await this.repo.findOneBy({ email });
+    const user = await this.userService.findOneBy({ email });
 
     if (user) {
       const resetToken = nanoid(64);
@@ -99,7 +121,9 @@ export class AuthService {
 
     await this.resetToken.delete({ id: token.id });
 
-    const user = await this.repo.findOne({ where: { id: token.userId } });
+    const user = await this.userService.findOne({
+      where: { id: token.userId },
+    });
     if (!user) {
       throw new InternalServerErrorException('User not found');
     }
@@ -107,7 +131,7 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     user.password = hashedPassword;
-    await this.repo.save(user);
+    await this.userService.save(user);
   }
 
   async refrshToken(refreshToken: string) {
@@ -135,6 +159,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
+      userId,
     };
   }
 
@@ -145,8 +170,18 @@ export class AuthService {
     await this.refreshToken.upsert({ token, userId, expiryDate }, ['userId']);
   }
 
+  async verifyToken(userId: number, token: string) {
+    const valid = await this.otpService.validateOTP(userId, token);
+    if (!valid) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    await this.otpService.deleteOtp(userId);
+    return true;
+  }
+
   async changePassword(userId, oldPassword: string, newPassword: string) {
-    const user = await this.repo.findOneBy(userId);
+    const user = await this.userService.findOneBy(userId);
     if (!user) {
       throw new NotFoundException('User not found ...?');
     }
@@ -158,8 +193,28 @@ export class AuthService {
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedNewPassword;
 
-    await this.repo.save(user);
+    await this.userService.save(user);
 
     return { message: 'Password updated successfully' };
+  }
+
+  async resendOtp(email: string) {
+    const user = await this.userService.findOne({
+      where: { email },
+    });
+
+    if (!user) {
+      throw new BadRequestException('user not found');
+    }
+
+    if (user.accountStatus === 'verified') {
+      throw new BadRequestException('Account already verified');
+    }
+
+    const otp = await this.otpService.generateOTP(user, OTPType.OTP);
+
+    await this.mailService.sendOtpViaEmail(email, otp);
+
+    return { message: 'A new OTP has been sent to your email.' };
   }
 }
