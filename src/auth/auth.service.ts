@@ -11,25 +11,29 @@ import { MoreThanOrEqual, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dtos/login.dto';
 import { JwtService } from '@nestjs/jwt';
-import { RefreshToken } from './entities/refresh-token.entity';
-import { randomUUID } from 'crypto';
+
 import { nanoid } from 'nanoid';
 import { ResetToken } from './entities/reset-token-entity';
 import { MailService } from '../mail/mail.service';
 import { OTPService } from '../otp/otp.service';
 import { OTPType } from '../otp/type/OTPType';
 import { UserService } from '../user/user.service';
+import { ConfigService } from '@nestjs/config';
+import { JwtPayload } from './types/jwt-payload.type';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(ResetToken) private resetToken: Repository<ResetToken>,
-    @InjectRepository(RefreshToken)
-    private refreshToken: Repository<RefreshToken>,
-    private jwtSetvice: JwtService,
+    @InjectQueue('email') private readonly emailQueue: Queue,
+
+    private jwtService: JwtService,
     private mailService: MailService,
     private otpService: OTPService,
     private userService: UserService,
+    private configService: ConfigService,
   ) {}
 
   async signup(signupData: SignupDto) {
@@ -49,15 +53,16 @@ export class AuthService {
     await this.userService.save(user);
     const otp = await this.otpService.generateOTP(user, OTPType.OTP);
 
-    await this.mailService.sendOtpViaEmail(email, otp);
+    await this.emailQueue.add('send-otp', {
+      to: email,
+      otp,
+    });
   }
 
   async login(credentials: LoginDto) {
     const { email, password, otp } = credentials;
-    const user = await this.userService.findOne({
-      where: { email },
-    });
 
+    const user = await this.userService.findOne({ where: { email } });
     if (!user) {
       throw new UnauthorizedException('Wrong credentials');
     }
@@ -71,16 +76,33 @@ export class AuthService {
       if (!otp) {
         return {
           message: 'Your account is not verified. Please provide your OTP.',
+          status: 'UNVERIFIED',
         };
       }
 
-      await this.verifyToken(user.id, otp);
+      const verified = await this.verifyToken(user.id, otp);
+
+      if (!verified) {
+        throw new UnauthorizedException('Invalid or expired OTP');
+      }
 
       user.accountStatus = 'verified';
       await this.userService.save(user);
     }
 
-    return this.generateUserTokens(user.id);
+    const tokens = await this.generateUserTokens(user.id);
+
+    return {
+      message: 'Login successful',
+      status: 'VERIFIED',
+      data: {
+        user: { id: user.id },
+        tokens: {
+          access: tokens.accessToken,
+          refresh: tokens.refreshToken,
+        },
+      },
+    };
   }
 
   async forgotPassword(email: string) {
@@ -100,7 +122,10 @@ export class AuthService {
         ['userId'],
       );
 
-      this.mailService.sendPasswordResetEmail(email, resetToken);
+      await this.emailQueue.add('password-reset', {
+        to: email,
+        token: resetToken,
+      });
     }
 
     return {
@@ -134,40 +159,41 @@ export class AuthService {
     await this.userService.save(user);
   }
 
-  async refrshToken(refreshToken: string) {
-    const token = await this.refreshToken.findOneBy({ token: refreshToken });
-    if (!token) {
-      throw new UnauthorizedException('Invalid refresh token');
-    }
+  async refreshToken(refreshToken: string) {
+    try {
+      const refreshSecret =
+        this.configService.get<string>('JWT_REFRESH_SECRET')!;
+      const decoded = this.jwtService.verify(refreshToken, {
+        secret: refreshSecret,
+      });
 
-    if (token.expiryDate <= new Date()) {
-      await this.refreshToken.delete({ token: refreshToken });
-      throw new UnauthorizedException('Refresh token expired');
+      return this.generateUserTokens(decoded.userId);
+    } catch (error) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
     }
-    await this.refreshToken.delete({ token: refreshToken });
-
-    return this.generateUserTokens(token.userId);
   }
 
-  async generateUserTokens(userId) {
-    const accessToken = this.jwtSetvice.sign({ userId }, { expiresIn: '1h' });
+  async generateUserTokens(userId: number) {
+    const accessSecret = this.configService.get<string>('JWT_ACCESS_SECRET')!;
+    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET')!;
+    const accessExp = this.configService.get<string>('JWT_ACCESS_EXPIRES_IN')!;
+    const refreshExp = this.configService.get<string>(
+      'JWT_REFRESH_EXPIRES_IN',
+    )!;
 
-    const refreshToken = randomUUID();
+    const payload: JwtPayload = { userId };
 
-    await this.storeRefreshToken(refreshToken, userId);
+    const accessToken = this.jwtService.sign(payload, {
+      secret: accessSecret,
+      expiresIn: accessExp as any,
+    });
 
-    return {
-      accessToken,
-      refreshToken,
-      userId,
-    };
-  }
+    const refreshToken = this.jwtService.sign(payload, {
+      secret: refreshSecret,
+      expiresIn: refreshExp as any,
+    });
 
-  async storeRefreshToken(token: string, userId) {
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + 3);
-
-    await this.refreshToken.upsert({ token, userId, expiryDate }, ['userId']);
+    return { accessToken, refreshToken, payload };
   }
 
   async verifyToken(userId: number, token: string) {
@@ -181,7 +207,7 @@ export class AuthService {
   }
 
   async changePassword(userId, oldPassword: string, newPassword: string) {
-    const user = await this.userService.findOneBy(userId);
+    const user = await this.userService.findOneBy({ id: userId });
     if (!user) {
       throw new NotFoundException('User not found ...?');
     }
@@ -195,7 +221,11 @@ export class AuthService {
 
     await this.userService.save(user);
 
-    return { message: 'Password updated successfully' };
+    const tokens = await this.generateUserTokens(userId);
+    return {
+      message: 'Password updated successfully',
+      tokens,
+    };
   }
 
   async resendOtp(email: string) {
@@ -213,7 +243,10 @@ export class AuthService {
 
     const otp = await this.otpService.generateOTP(user, OTPType.OTP);
 
-    await this.mailService.sendOtpViaEmail(email, otp);
+    await this.emailQueue.add('send-otp', {
+      to: email,
+      otp,
+    });
 
     return { message: 'A new OTP has been sent to your email.' };
   }

@@ -1,13 +1,14 @@
 import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import { AppService } from './app.service';
-import { AuthGuard } from './guards/auth.guard';
+import { AuthenticationGuard } from './guards/authentication.guard';
+import { AuthorizationGuard } from './guards/authorization.guard';
 
-@Controller()
+@UseGuards(AuthenticationGuard, AuthorizationGuard)
+@Controller('/')
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
   @Get()
-  @UseGuards(AuthGuard)
   someProtectedRoute(@Req() req) {
     return { message: 'Accessed Resource', userId: req.userId };
   }

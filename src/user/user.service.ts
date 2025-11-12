@@ -1,13 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { Repository } from 'typeorm';
+import { RolesService } from '../roles/roles.service';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private roleService: RolesService,
   ) {}
 
   //
@@ -34,5 +36,30 @@ export class UserService {
 
   async findAll() {
     return this.userRepo.find();
+  }
+
+  async getUserPermission(userId: number) {
+    const user = await this.findOne({
+      where: { id: userId },
+      relations: ['role'],
+    });
+
+    if (!user) {
+      throw new BadRequestException('user not found');
+    }
+
+    const role = user.role;
+
+    if (!role) {
+      throw new BadRequestException('role not found');
+    }
+
+    const fullRole = await this.roleService.getRoleById(role.id);
+
+    if (!fullRole) {
+      throw new BadRequestException('role not found');
+    }
+
+    return fullRole.permissions;
   }
 }

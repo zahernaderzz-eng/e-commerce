@@ -1,13 +1,21 @@
-import { Body, Controller, Post, Put, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dtos/signup.dto';
 import { LoginDto } from './dtos/login.dto';
 import { RefreshTokenDto } from './dtos/refresh-token.dto';
 import { ChangePasswordDto } from './dtos/change-passord.dto';
-import { AuthGuard } from '../guards/auth.guard';
+import { AuthenticationGuard } from '../guards/authentication.guard';
 import { ForgotPasswordDto } from './dtos/forgot-password.dto';
 import { ResetPasswordDto } from './dtos/reset-password.dto';
-import { RequestOTPDto } from './dtos/request.OTP.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -18,12 +26,13 @@ export class AuthController {
   async signUp(@Body() signupData: SignupDto) {
     await this.authService.signup(signupData);
     return {
-      message: 'User creaed successfully and Otp sent to email',
+      message: 'User created successfully and Otp sent to email',
     };
   }
 
   //TODO : Post login
   @Post('login')
+  @HttpCode(HttpStatus.OK)
   async login(@Body() credentials: LoginDto) {
     return this.authService.login(credentials);
   }
@@ -38,15 +47,16 @@ export class AuthController {
   //TODO : Post refresh token
   @Post('refresh')
   async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
-    return this.authService.refrshToken(refreshTokenDto.refreshToken);
+    return this.authService.refreshToken(refreshTokenDto.refreshToken);
   }
 
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthenticationGuard)
   @Put('change-password')
   async changePassword(
     @Body() changePasswordDto: ChangePasswordDto,
     @Req() req,
   ) {
+    console.log(req);
     return this.authService.changePassword(
       req.userId,
       changePasswordDto.oldPassword,
