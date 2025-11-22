@@ -19,12 +19,27 @@ import { Category } from './categories/entities/category.entity';
 import { Product } from './products/entities/product.entity';
 import { ProductImage } from './products/entities/product-image.entity';
 import { CloudinaryModule } from './cloudianry/cloudinary.module';
+import { BullModule } from '@nestjs/bullmq';
+import { OrdersModule } from './orders/orders.module';
+import { CartModule } from './cart/cart.module';
+import { CartItem } from './cart/entities/cart-item.entity';
+import { Cart } from './cart/entities/cart.entity';
+import { OrderItem } from './orders/entities/order-item.entity';
+import { Order } from './orders/entities/order.entity';
+import { PaymentModule } from './payment/payment.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env.development',
+    }),
+
+    BullModule.forRoot({
+      connection: {
+        host: '127.0.0.1',
+        port: 6379,
+      },
     }),
 
     TypeOrmModule.forRootAsync({
@@ -44,6 +59,10 @@ import { CloudinaryModule } from './cloudianry/cloudinary.module';
           Category,
           Product,
           ProductImage,
+          Cart,
+          CartItem,
+          Order,
+          OrderItem,
         ],
         synchronize: true,
       }),
@@ -61,6 +80,7 @@ import { CloudinaryModule } from './cloudianry/cloudinary.module';
       }),
       inject: [ConfigService],
     }),
+
     AuthModule,
     MailModule,
     OTPModule,
@@ -69,6 +89,10 @@ import { CloudinaryModule } from './cloudianry/cloudinary.module';
     ProductsModule,
     CategoriesModule,
     CloudinaryModule,
+    OrdersModule,
+    CartModule,
+
+    PaymentModule,
   ],
   controllers: [AppController],
   providers: [AppService],

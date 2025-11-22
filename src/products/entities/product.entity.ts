@@ -10,6 +10,7 @@ import {
 import { User } from '../../user/entities/user.entity';
 import { ProductImage } from './product-image.entity';
 import { Category } from '../../categories/entities/category.entity';
+import { OrderItem } from '../../orders/entities/order-item.entity';
 
 @Entity('products')
 export class Product {
@@ -46,6 +47,9 @@ export class Product {
 
   @ManyToOne(() => Category, (category) => category.products)
   category: Category;
+
+  @OneToMany(() => OrderItem, (item) => item.product)
+  orderItems: OrderItem[];
 
   @CreateDateColumn({ type: 'timestamp' })
   createdAt: Date;

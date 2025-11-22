@@ -28,6 +28,14 @@ export class MailProcessor extends WorkerHost {
           );
           break;
 
+        case 'order-confirmation':
+          this.logger.log(`📦 Sending order confirmation to ${job.data.to}`);
+          await this.mailService.sendOrderConfirmationEmail(
+            job.data.to,
+            job.data.orderData,
+          );
+          break;
+
         default:
           this.logger.warn(`❓ Unknown job type: ${job.name}`);
       }

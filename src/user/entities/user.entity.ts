@@ -9,6 +9,8 @@ import {
 import { Role } from '../../roles/entities/role.entity';
 import { Product } from '../../products/entities/product.entity';
 import { Category } from '../../categories/entities/category.entity';
+import { Cart } from '../../cart/entities/cart.entity';
+import { Order } from '../../orders/entities/order.entity';
 
 @Entity()
 export class User {
@@ -36,4 +38,10 @@ export class User {
 
   @OneToMany(() => Category, (category) => category.addedBy)
   categories: Category[];
+
+  @OneToMany(() => Cart, (cart) => cart.user)
+  carts: Cart[];
+
+  @OneToMany(() => Order, (order) => order.user)
+  orders: Order[];
 }
