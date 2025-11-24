@@ -15,6 +15,7 @@ import { StautsOrder } from './enums/order-status.enum';
 import { OrderItem } from './entities/order-item.entity';
 import { CartItem } from '../cart/entities/cart-item.entity';
 import { InjectRepository } from '@nestjs/typeorm';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class OrdersService {
@@ -24,6 +25,7 @@ export class OrdersService {
     @InjectRepository(Order) private orderRepository: Repository<Order>,
     private dataSource: DataSource,
     private cartService: CartService,
+    private notificationService: NotificationService,
   ) {}
   async createOrderFromCart(userId: number) {
     const queryRunner = this.dataSource.createQueryRunner();
@@ -88,6 +90,20 @@ export class OrdersService {
       await queryRunner.manager.delete(CartItem, { cartId: cart.id });
 
       await queryRunner.commitTransaction();
+
+      await this.notificationService.sendToUser(
+        userId,
+        'Order Received!',
+        `Your order #${createdOrder.id.substring(0, 8)} has been received and is being processed`,
+        'order',
+        {
+          orderId: createdOrder.id,
+          screen: 'OrderDetails',
+          orderStatus: StautsOrder.pending,
+        },
+      );
+
+      this.logger.log(`Notification queued for order ${createdOrder.id}`);
       return createdOrder;
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -147,6 +163,18 @@ export class OrdersService {
       await queryRunner.manager.save(Order, order);
 
       await queryRunner.commitTransaction();
+
+      await this.notificationService.sendToUser(
+        order.userId,
+        'Payment Successful!',
+        `Payment confirmed for order #${orderId.substring(0, 8)}. Your order is being prepared`,
+        'order',
+        {
+          orderId: order.id,
+          screen: 'OrderDetails',
+          orderStatus: order.status,
+        },
+      );
       this.logger.log(`Stock reduced successfully for order ${orderId}`);
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -200,14 +228,23 @@ export class OrdersService {
   }
 
   async updateOrderStatus(id: string, status: StautsOrder) {
-    const order = await this.orderRepository.findOne({ where: { id } });
+    const order = await this.orderRepository.findOne({
+      where: { id },
+      relations: ['user'], // ← نجيب الـ user عشان نبعتله notification
+    });
 
     if (!order) {
       throw new NotFoundException('Order not found');
     }
 
+    const oldStatus = order.status;
     order.status = status;
-    return this.orderRepository.save(order);
+
+    const updatedOrder = await this.orderRepository.save(order);
+
+    await this.sendStatusNotification(order.userId, id, status, oldStatus);
+
+    return updatedOrder;
   }
 
   async updatePaymentInfo(
@@ -258,5 +295,52 @@ export class OrdersService {
     }
 
     return order;
+  }
+
+  private async sendStatusNotification(
+    userId: number,
+    orderId: string,
+    newStatus: StautsOrder,
+    oldStatus: StautsOrder,
+  ) {
+    // لو الـ status مغيرش → مفيش داعي نبعت
+    if (newStatus === oldStatus) {
+      return;
+    }
+
+    const orderIdShort = orderId.substring(0, 8);
+
+    let title: string;
+    let body: string;
+
+    switch (newStatus) {
+      case StautsOrder.processing:
+        title = ' Order Processing';
+        body = `Your order #${orderIdShort} is now being processed`;
+        break;
+
+      case StautsOrder.delivered:
+        title = 'Order Delivered!';
+        body = `Your order #${orderIdShort} has been delivered. Enjoy!`;
+        break;
+
+      case StautsOrder.cancelled:
+        title = 'Order Cancelled';
+        body = `Your order #${orderIdShort} has been cancelled`;
+        break;
+
+      default:
+        return;
+    }
+
+    await this.notificationService.sendToUser(userId, title, body, 'order', {
+      orderId,
+      screen: 'OrderDetails',
+      orderStatus: newStatus,
+    });
+
+    this.logger.log(
+      `Status notification queued for order ${orderId}: ${newStatus}`,
+    );
   }
 }

@@ -11,6 +11,8 @@ import { Product } from './entities/product.entity';
 import { CategoriesService } from '../categories/categories.service';
 import { CloudinaryService } from '../cloudianry/cloudinary.service';
 import { ProductImage } from './entities/product-image.entity';
+import { FollowersService } from '../followers/followers.service';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class ProductsService {
@@ -18,9 +20,10 @@ export class ProductsService {
     @InjectRepository(Product) private productRepo: Repository<Product>,
     @InjectRepository(ProductImage)
     private productImageRepo: Repository<ProductImage>,
-
     private categoriesSrvice: CategoriesService,
     private cloudinaryService: CloudinaryService,
+    private readonly followersService: FollowersService,
+    private readonly notificationService: NotificationService,
   ) {}
   async create(createProductDto: CreateProductDto, userId: number) {
     const { categoryId, ...data } = createProductDto;
@@ -37,6 +40,14 @@ export class ProductsService {
     });
 
     const savedProduct = await this.productRepo.save(product);
+
+    const followerUserIds = await this.followersService.getAllFollowerUserIds();
+
+    await this.notificationService.sendNewProductNotificationToFollowers(
+      followerUserIds,
+      savedProduct.id,
+      savedProduct.title,
+    );
 
     return savedProduct;
   }

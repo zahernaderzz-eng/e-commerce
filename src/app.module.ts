@@ -27,6 +27,14 @@ import { Cart } from './cart/entities/cart.entity';
 import { OrderItem } from './orders/entities/order-item.entity';
 import { Order } from './orders/entities/order.entity';
 import { PaymentModule } from './payment/payment.module';
+import { NotificationModule } from './notification/notification.module';
+import { FcmTokenModule } from './fcm-token/fcm-token.module';
+import { FcmToken } from './fcm-token/entities/fcm-token.entity';
+import { Notification } from './notification/entities/notification.entity'; // ← إضافة
+import { FollowersModule } from './followers/followers.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { Review } from './reviews/entities/review.entity';
+import { Follower } from './followers/entities/follower.entity';
 
 @Module({
   imports: [
@@ -39,6 +47,15 @@ import { PaymentModule } from './payment/payment.module';
       connection: {
         host: '127.0.0.1',
         port: 6379,
+      },
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'fixed',
+          delay: 2000,
+        },
+        removeOnComplete: true,
+        removeOnFail: false,
       },
     }),
 
@@ -63,6 +80,10 @@ import { PaymentModule } from './payment/payment.module';
           CartItem,
           Order,
           OrderItem,
+          FcmToken,
+          Notification,
+          Review,
+          Follower,
         ],
         synchronize: true,
       }),
@@ -91,8 +112,11 @@ import { PaymentModule } from './payment/payment.module';
     CloudinaryModule,
     OrdersModule,
     CartModule,
-
     PaymentModule,
+    FcmTokenModule,
+    NotificationModule,
+    FollowersModule,
+    ReviewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

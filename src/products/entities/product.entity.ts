@@ -11,6 +11,7 @@ import { User } from '../../user/entities/user.entity';
 import { ProductImage } from './product-image.entity';
 import { Category } from '../../categories/entities/category.entity';
 import { OrderItem } from '../../orders/entities/order-item.entity';
+import { Review } from '../../reviews/entities/review.entity';
 
 @Entity('products')
 export class Product {
@@ -56,4 +57,11 @@ export class Product {
 
   @UpdateDateColumn({ type: 'timestamp' })
   updatedAt: Date;
+  @OneToMany(() => Review, (r) => r.product)
+  reviews: Review[];
+  @Column({ type: 'float', default: 0 })
+  averageRating: number;
+
+  @Column({ type: 'int', default: 0 })
+  reviewCount: number;
 }

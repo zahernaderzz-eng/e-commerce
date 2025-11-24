@@ -33,7 +33,6 @@ export class PaymentService {
     this.logger.log(`Creating checkout session for order ${orderId}`);
 
     try {
-      // ✅ 1. جيب الـ Order
       const order = await this.orderService.findOne(orderId, {
         relations: ['items', 'items.product'],
       });
@@ -42,7 +41,6 @@ export class PaymentService {
         throw new NotFoundException(`Order ${orderId} not found`);
       }
 
-      // ✅ 2. تحقق من حالة الـ Order
       if (order.status === StautsOrder.paid) {
         throw new BadRequestException('This order has already been paid');
       }
@@ -53,17 +51,15 @@ export class PaymentService {
         );
       }
 
-      // ✅ 3. تحقق من الـ ownership
       if (order.userId !== userId) {
         throw new ForbiddenException('You cannot pay for this order');
       }
 
-      // ✅ 4. تحقق من أن الـ order مش فاضي
       if (!order.items || order.items.length === 0) {
         throw new BadRequestException('Cannot process empty order');
       }
 
-      // ✅ 5. تحويل الـ items لـ Stripe line_items
+      //Stripe Line Items Important
       const line_items = order.items.map((item: OrderItem) => {
         const priceNumber = Number(item.unitPrice);
 
@@ -110,7 +106,6 @@ export class PaymentService {
         };
       });
 
-      // ✅ 6. إنشاء الـ Stripe Checkout Session
       const session = await this.stripe.checkout.sessions.create({
         mode: 'payment',
         payment_method_types: ['card'],
@@ -121,8 +116,8 @@ export class PaymentService {
         },
         success_url: `${process.env.FRONTEND_URL}/orders/${orderId}/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.FRONTEND_URL}/orders/${orderId}/cancel`,
-        expires_at: Math.floor(Date.now() / 1000) + 1800, // ينتهي بعد 30 دقيقة
-        customer_email: order.user?.email, // إذا عندك email في الـ User entity
+        expires_at: Math.floor(Date.now() / 1000) + 1800,
+        customer_email: order.user?.email,
       });
 
       this.logger.log(
@@ -134,7 +129,6 @@ export class PaymentService {
         url: session.url,
       };
     } catch (err) {
-      // لو الـ error من الـ validations، ارميه زي ما هو
       if (
         err instanceof BadRequestException ||
         err instanceof NotFoundException ||
@@ -143,7 +137,6 @@ export class PaymentService {
         throw err;
       }
 
-      // لو error من Stripe أو حاجة تانية
       this.logger.error(
         `Failed to create checkout session for order ${orderId}: ${err.message}`,
         err.stack,
@@ -200,7 +193,7 @@ export class PaymentService {
               },
             });
 
-            this.logger.log(`✅ Order ${orderId} processed and email sent`);
+            this.logger.log(` Order ${orderId} processed and email sent`);
 
             return { orderId, status: 'paid', paymentIntentId };
           } catch (error) {

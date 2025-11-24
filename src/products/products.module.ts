@@ -7,6 +7,8 @@ import { ProductImage } from './entities/product-image.entity';
 import { CategoriesModule } from '../categories/categories.module';
 import { CloudinaryModule } from '../cloudianry/cloudinary.module';
 import { UserModule } from '../user/user.module';
+import { FollowersModule } from '../followers/followers.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { UserModule } from '../user/user.module';
     CategoriesModule,
     CloudinaryModule,
     UserModule,
+    FollowersModule,
+    NotificationModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService],

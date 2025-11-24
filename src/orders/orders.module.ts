@@ -7,6 +7,7 @@ import { OrderItem } from './entities/order-item.entity';
 import { UserModule } from '../user/user.module';
 import { ProductsModule } from '../products/products.module';
 import { CartModule } from '../cart/cart.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { CartModule } from '../cart/cart.module';
     UserModule,
     ProductsModule,
     CartModule,
+    NotificationModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

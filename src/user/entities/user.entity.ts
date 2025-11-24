@@ -11,6 +11,9 @@ import { Product } from '../../products/entities/product.entity';
 import { Category } from '../../categories/entities/category.entity';
 import { Cart } from '../../cart/entities/cart.entity';
 import { Order } from '../../orders/entities/order.entity';
+import { FcmToken } from '../../fcm-token/entities/fcm-token.entity';
+import { Review } from '../../reviews/entities/review.entity';
+import { Follower } from '../../followers/entities/follower.entity';
 
 @Entity()
 export class User {
@@ -44,4 +47,12 @@ export class User {
 
   @OneToMany(() => Order, (order) => order.user)
   orders: Order[];
+  @OneToMany(() => FcmToken, (token) => token.user)
+  fcmTokens: FcmToken[];
+
+  @OneToMany(() => Review, (r) => r.user)
+  reviews: Review[];
+
+  @OneToMany(() => Follower, (f) => f.user)
+  followers: Follower[];
 }
