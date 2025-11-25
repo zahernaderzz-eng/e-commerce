@@ -34,7 +34,7 @@ export class ReviewsService {
     if (!user) throw new NotFoundException('User not found');
 
     const product = await this.productRepo.findOne({
-      where: { id: Number(productId) },
+      where: { id: productId },
     });
     if (!product) throw new NotFoundException('Product not found');
 
@@ -42,7 +42,7 @@ export class ReviewsService {
     const already = await this.reviewRepo.findOne({
       where: {
         user: { id: userId },
-        product: { id: Number(productId) },
+        product: { id: productId },
       },
       relations: ['user', 'product'],
     });
@@ -60,19 +60,31 @@ export class ReviewsService {
 
     const saved = await this.reviewRepo.save(review);
 
-    await this.recalculateProductRating(product.id);
+    await this.recalculateProductRating(productId);
 
     return saved;
   }
 
   async findByProduct(productId: number, page = 1) {
-    return this.reviewRepo.find({
-      where: { product: { id: Number(productId) } },
-      relations: ['user'],
-      take: 10,
-      skip: (page - 1) * 10,
-      order: { createdAt: 'DESC' },
-    });
+    return this.reviewRepo
+      .createQueryBuilder('review')
+      .leftJoinAndSelect('review.user', 'user')
+      .where('review.productId = :productId', { productId })
+      .orderBy('review.createdAt', 'DESC')
+      .skip((page - 1) * 10)
+      .take(10)
+      .select([
+        'review.id',
+        'review.rating',
+        'review.comment',
+        'review.createdAt',
+        'review.updatedAt',
+
+        'user.id',
+        'user.name',
+        'user.email',
+      ])
+      .getMany();
   }
 
   async update(userId: number, reviewId: number, dto: UpdateReviewDto) {
@@ -87,8 +99,8 @@ export class ReviewsService {
       throw new ForbiddenException('You cannot edit this review');
     }
 
-    if (dto.rating) review.rating = dto.rating;
-    if (dto.comment) review.comment = dto.comment;
+    if (dto.rating !== undefined) review.rating = dto.rating;
+    if (dto.comment !== undefined) review.comment = dto.comment;
 
     const updated = await this.reviewRepo.save(review);
 

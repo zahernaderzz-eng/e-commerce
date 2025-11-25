@@ -114,8 +114,9 @@ export class PaymentService {
           orderId: order.id,
           userId: userId.toString(),
         },
-        success_url: `${process.env.FRONTEND_URL}/orders/${orderId}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.FRONTEND_URL}/orders/${orderId}/cancel`,
+        success_url: `https://google.com?orderId=${orderId}&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `https://google.com`,
+
         expires_at: Math.floor(Date.now() / 1000) + 1800,
         customer_email: order.user?.email,
       });

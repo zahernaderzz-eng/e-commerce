@@ -303,7 +303,6 @@ export class OrdersService {
     newStatus: StautsOrder,
     oldStatus: StautsOrder,
   ) {
-    // لو الـ status مغيرش → مفيش داعي نبعت
     if (newStatus === oldStatus) {
       return;
     }

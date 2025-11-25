@@ -1,13 +1,14 @@
-// notification/notification.service.t
+// src/notification/notification.service.ts
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Repository } from 'typeorm';
 import { Queue } from 'bullmq';
-import * as firebase from 'firebase-admin';
+import * as admin from 'firebase-admin';
 import { Notification } from './entities/notification.entity';
 import { FcmTokenService } from '../fcm-token/fcm-token.service';
 import { NotificationQueryDto } from './dto/notification-query.dto';
+import { getMessaging } from '../firebase/firebase-admin';
 
 @Injectable()
 export class NotificationService {
@@ -56,7 +57,7 @@ export class NotificationService {
     try {
       const tokens = await this.fcmTokenService.getActiveTokensByUser(userId);
 
-      if (tokens.length === 0) {
+      if (!tokens || tokens.length === 0) {
         this.logger.warn(` No active tokens for user ${userId}`);
         return {
           success: false,
@@ -84,9 +85,9 @@ export class NotificationService {
         successCount: result.successCount,
         failureCount: result.failureCount,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
-        `Failed to send notification to user ${userId}: ${error.message}`,
+        `Failed to send notification to user ${userId}: ${error?.message || error}`,
       );
       throw error;
     }
@@ -97,8 +98,17 @@ export class NotificationService {
     title: string,
     body: string,
     data?: Record<string, any>,
-  ): Promise<firebase.messaging.BatchResponse> {
-    const message: firebase.messaging.MulticastMessage = {
+  ): Promise<admin.messaging.BatchResponse> {
+    // Ensure data values are strings (FCM requires string-string map)
+    const preparedData: Record<string, string> = {};
+    if (data) {
+      Object.keys(data).forEach((k) => {
+        const v = data[k];
+        preparedData[k] = typeof v === 'string' ? v : JSON.stringify(v ?? '');
+      });
+    }
+
+    const message: admin.messaging.MulticastMessage = {
       tokens,
 
       notification: {
@@ -106,7 +116,7 @@ export class NotificationService {
         body,
       },
 
-      data: data || {},
+      data: preparedData,
 
       android: {
         priority: 'high',
@@ -129,25 +139,27 @@ export class NotificationService {
     };
 
     try {
-      const response = await firebase.messaging().sendEachForMulticast(message);
+      const messaging = getMessaging();
+      // use sendMulticast which returns BatchResponse
+      const response = await messaging.sendEachForMulticast(message);
 
       this.logger.log(
         `Multicast result: ${response.successCount} success, ${response.failureCount} failed`,
       );
 
       return response;
-    } catch (error) {
-      this.logger.error(`Firebase multicast error: ${error.message}`);
+    } catch (error: any) {
+      this.logger.error(`Firebase multicast error: ${error?.message || error}`);
       throw error;
     }
   }
 
   private async handleFailedTokens(
-    result: firebase.messaging.BatchResponse,
+    result: admin.messaging.BatchResponse,
     tokens: string[],
   ): Promise<void> {
     if (result.failureCount === 0) {
-      this.logger.log('✅All tokens succeeded, no cleanup needed');
+      this.logger.log('All tokens succeeded, no cleanup needed');
       return;
     }
 
@@ -157,7 +169,7 @@ export class NotificationService {
 
     result.responses.forEach((resp, idx) => {
       if (!resp.success && resp.error) {
-        const errorCode = resp.error.code;
+        const errorCode = (resp.error as any).code;
         const token = tokens[idx];
         this.logger.debug(`Token ${idx}: ${errorCode}`);
 
@@ -168,7 +180,7 @@ export class NotificationService {
         ) {
           invalidTokens.push(token);
           this.logger.warn(
-            ` Marking token for removal: ${token.substring(0, 20)}...`,
+            ` Marking token for removal: ${token?.substring(0, 20) || token}...`,
           );
         } else if (errorCode === 'messaging/message-rate-exceeded') {
           this.logger.warn(`⏱ Rate limit exceeded for token ${idx}`);
@@ -214,9 +226,11 @@ export class NotificationService {
       );
 
       return saved;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
-        `Failed to save notification for user ${userId}: ${error.message}`,
+        `Failed to save notification for user ${userId}: ${
+          (error as any)?.message || error
+        }`,
       );
       throw error;
     }
@@ -252,6 +266,7 @@ export class NotificationService {
       message: `Notification queued for ${userIds.length} users`,
     };
   }
+
   async sendToMultipleUsersInternal(
     userIds: number[],
     title: string,
@@ -272,10 +287,12 @@ export class NotificationService {
         successCount++;
 
         this.logger.debug(`✅ Sent to user ${userId}`);
-      } catch (error) {
+      } catch (error: any) {
         failureCount++;
 
-        this.logger.error(`Failed to send to user ${userId}: ${error.message}`);
+        this.logger.error(
+          `Failed to send to user ${userId}: ${error?.message || error}`,
+        );
       }
     }
 
@@ -283,6 +300,7 @@ export class NotificationService {
       `📊 Batch complete: ${successCount} succeeded, ${failureCount} failed out of ${userIds.length} users`,
     );
   }
+
   async sendBroadcast(
     title: string,
     body: string,
@@ -324,7 +342,7 @@ export class NotificationService {
 
       const allTokens = await this.fcmTokenService.getAllActiveTokens();
 
-      if (allTokens.length === 0) {
+      if (!allTokens || allTokens.length === 0) {
         this.logger.warn(' No active tokens found for broadcast');
         return;
       }
@@ -356,8 +374,10 @@ export class NotificationService {
           this.logger.log(
             `Batch ${i + 1} complete: ${result.successCount} success, ${result.failureCount} failed`,
           );
-        } catch (error) {
-          this.logger.error(`Batch ${i + 1} failed: ${error.message}`);
+        } catch (error: any) {
+          this.logger.error(
+            `Batch ${i + 1} failed: ${error?.message || error}`,
+          );
           totalFailure += batch.length;
         }
       }
@@ -365,11 +385,12 @@ export class NotificationService {
       this.logger.log(
         `Broadcast complete: ${totalSuccess} succeeded, ${totalFailure} failed out of ${allTokens.length} total tokens`,
       );
-    } catch (error) {
-      this.logger.error(`Broadcast failed: ${error.message}`);
+    } catch (error: any) {
+      this.logger.error(`Broadcast failed: ${error?.message || error}`);
       throw error;
     }
   }
+
   async getNotifications(userId: number, query: NotificationQueryDto) {
     const { page = 1, limit = 20, filter = 'all', type = 'all' } = query;
 
@@ -494,7 +515,7 @@ export class NotificationService {
     productId: number,
     productName: string,
   ) {
-    if (userIds.length === 0) {
+    if (!userIds || userIds.length === 0) {
       this.logger.log('No followers found for new product notification');
       return;
     }

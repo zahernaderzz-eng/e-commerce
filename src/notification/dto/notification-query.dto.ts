@@ -1,5 +1,3 @@
-// notification/dto/notification-query.dto.ts
-
 import { IsOptional, IsEnum, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 

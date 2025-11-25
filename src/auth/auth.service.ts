@@ -36,12 +36,15 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
+  // ───────────────────────────────────────────────
   async signup(signupData: SignupDto) {
     const { email, password, name } = signupData;
+
     const emailInUse = await this.userService.findOneBy({ email });
     if (emailInUse) {
       throw new BadRequestException('Email already in use');
     }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await this.userService.create({
@@ -51,6 +54,7 @@ export class AuthService {
     });
 
     await this.userService.save(user);
+
     const otp = await this.otpService.generateOTP(user, OTPType.OTP);
 
     await this.emailQueue.add('send-otp', {
@@ -59,10 +63,15 @@ export class AuthService {
     });
   }
 
+  // ───────────────────────────────────────────────
   async login(credentials: LoginDto) {
     const { email, password, otp } = credentials;
 
-    const user = await this.userService.findOne({ where: { email } });
+    const user = await this.userService.findOne({
+      where: { email },
+      select: ['id', 'email', 'password', 'name', 'accountStatus'], // IMPORTANT
+    });
+
     if (!user) {
       throw new UnauthorizedException('Wrong credentials');
     }
@@ -72,6 +81,7 @@ export class AuthService {
       throw new UnauthorizedException('Wrong credentials');
     }
 
+    // Handle OTP verification
     if (user.accountStatus === 'unverified') {
       if (!otp) {
         return {
@@ -81,7 +91,6 @@ export class AuthService {
       }
 
       const verified = await this.verifyToken(user.id, otp);
-
       if (!verified) {
         throw new UnauthorizedException('Invalid or expired OTP');
       }
@@ -105,6 +114,7 @@ export class AuthService {
     };
   }
 
+  // ───────────────────────────────────────────────
   async forgotPassword(email: string) {
     const user = await this.userService.findOneBy({ email });
 
@@ -129,14 +139,16 @@ export class AuthService {
     }
 
     return {
-      message: ' If this user exists , they will recive an email ',
+      message: 'If this user exists, they will receive an email',
     };
   }
+
+  // ───────────────────────────────────────────────
   async resetPassword(newPassword: string, resetToken: string) {
     const token = await this.resetToken.findOne({
       where: {
         token: resetToken,
-        expiryDate: MoreThanOrEqual(new Date()), // نفس فكرة $gte
+        expiryDate: MoreThanOrEqual(new Date()),
       },
     });
 
@@ -148,7 +160,9 @@ export class AuthService {
 
     const user = await this.userService.findOne({
       where: { id: token.userId },
+      select: ['id', 'email', 'password', 'name', 'accountStatus'], // IMPORTANT
     });
+
     if (!user) {
       throw new InternalServerErrorException('User not found');
     }
@@ -159,6 +173,7 @@ export class AuthService {
     await this.userService.save(user);
   }
 
+  // ───────────────────────────────────────────────
   async refreshToken(refreshToken: string) {
     try {
       const refreshSecret =
@@ -173,6 +188,7 @@ export class AuthService {
     }
   }
 
+  // ───────────────────────────────────────────────
   async generateUserTokens(userId: number) {
     const accessSecret = this.configService.get<string>('JWT_ACCESS_SECRET')!;
     const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET')!;
@@ -196,8 +212,10 @@ export class AuthService {
     return { accessToken, refreshToken, payload };
   }
 
+  // ───────────────────────────────────────────────
   async verifyToken(userId: number, token: string) {
     const valid = await this.otpService.validateOTP(userId, token);
+
     if (!valid) {
       throw new BadRequestException('Invalid or expired OTP');
     }
@@ -206,14 +224,24 @@ export class AuthService {
     return true;
   }
 
-  async changePassword(userId, oldPassword: string, newPassword: string) {
-    const user = await this.userService.findOneBy({ id: userId });
+  // ───────────────────────────────────────────────
+  async changePassword(
+    userId: number,
+    oldPassword: string,
+    newPassword: string,
+  ) {
+    const user = await this.userService.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'password', 'name'], // IMPORTANT
+    });
+
     if (!user) {
-      throw new NotFoundException('User not found ...?');
+      throw new NotFoundException('User not found');
     }
+
     const passwordMatch = await bcrypt.compare(oldPassword, user.password);
     if (!passwordMatch) {
-      throw new UnauthorizedException('wrong credentials');
+      throw new UnauthorizedException('Wrong credentials');
     }
 
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
@@ -222,19 +250,21 @@ export class AuthService {
     await this.userService.save(user);
 
     const tokens = await this.generateUserTokens(userId);
+
     return {
       message: 'Password updated successfully',
       tokens,
     };
   }
 
+  // ───────────────────────────────────────────────
   async resendOtp(email: string) {
     const user = await this.userService.findOne({
       where: { email },
     });
 
     if (!user) {
-      throw new BadRequestException('user not found');
+      throw new BadRequestException('User not found');
     }
 
     if (user.accountStatus === 'verified') {

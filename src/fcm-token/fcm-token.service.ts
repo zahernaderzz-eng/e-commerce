@@ -127,13 +127,11 @@ export class FcmTokenService {
 
       const tokenStrings = tokens.map((t) => t.deviceToken);
 
-      this.logger.log(
-        `📊 Found ${tokenStrings.length} active tokens in system`,
-      );
+      this.logger.log(`Found ${tokenStrings.length} active tokens in system`);
 
       return tokenStrings;
     } catch (error) {
-      this.logger.error(`❌ Failed to get all active tokens: ${error.message}`);
+      this.logger.error(`Failed to get all active tokens: ${error.message}`);
       throw error;
     }
   }
