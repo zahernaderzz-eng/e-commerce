@@ -35,6 +35,7 @@ import { FollowersModule } from './followers/followers.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { Review } from './reviews/entities/review.entity';
 import { Follower } from './followers/entities/follower.entity';
+import { BullConfigModule } from './infrastructure/bull/bull.config.module';
 
 @Module({
   imports: [
@@ -43,21 +44,7 @@ import { Follower } from './followers/entities/follower.entity';
       envFilePath: '.env.development',
     }),
 
-    BullModule.forRoot({
-      connection: {
-        host: '127.0.0.1',
-        port: 6379,
-      },
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: {
-          type: 'fixed',
-          delay: 2000,
-        },
-        removeOnComplete: true,
-        removeOnFail: false,
-      },
-    }),
+    BullConfigModule,
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

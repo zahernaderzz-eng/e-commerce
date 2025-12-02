@@ -1,4 +1,4 @@
-import { IsEmail, IsString, Matches, MinLength } from 'class-validator';
+import { IsEmail, IsString, IsStrongPassword } from 'class-validator';
 
 export class SignupDto {
   @IsEmail()
@@ -6,14 +6,6 @@ export class SignupDto {
   @IsString()
   name: string;
 
-  @IsString()
-  @MinLength(6)
-  @Matches(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/,
-    {
-      message:
-        'Password must include at least one uppercase letter, one lowercase letter, one number, and one special character.',
-    },
-  )
+  @IsStrongPassword()
   password: string;
 }

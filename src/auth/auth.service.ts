@@ -4,10 +4,12 @@ import {
   UnauthorizedException,
   NotFoundException,
   InternalServerErrorException,
+  ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { SignupDto } from './dtos/signup.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThanOrEqual, Repository } from 'typeorm';
+import { DataSource, MoreThanOrEqual, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dtos/login.dto';
 import { JwtService } from '@nestjs/jwt';
@@ -22,12 +24,15 @@ import { ConfigService } from '@nestjs/config';
 import { JwtPayload } from './types/jwt-payload.type';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { User } from '../user/entities/user.entity';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   constructor(
     @InjectRepository(ResetToken) private resetToken: Repository<ResetToken>,
     @InjectQueue('email') private readonly emailQueue: Queue,
+    private readonly dataSource: DataSource,
 
     private jwtService: JwtService,
     private mailService: MailService,
@@ -37,30 +42,53 @@ export class AuthService {
   ) {}
 
   // ───────────────────────────────────────────────
-  async signup(signupData: SignupDto) {
+  async signup(signupData: SignupDto): Promise<void> {
     const { email, password, name } = signupData;
 
-    const emailInUse = await this.userService.findOneBy({ email });
-    if (emailInUse) {
-      throw new BadRequestException('Email already in use');
+    const existingUser = await this.userService.findOneBy({ email });
+    if (existingUser) {
+      throw new ConflictException('Email already in use');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await this.userService.create({
-      name,
-      email,
-      password: hashedPassword,
-    });
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    await this.userService.save(user);
+    try {
+      const user = queryRunner.manager.create(User, {
+        name,
+        email,
+        password: hashedPassword,
+      });
+      await queryRunner.manager.save(User, user);
 
-    const otp = await this.otpService.generateOTP(user, OTPType.OTP);
+      const otp = await this.otpService.generateOTPWithManager(
+        queryRunner.manager,
+        user,
+        OTPType.OTP,
+      );
 
-    await this.emailQueue.add('send-otp', {
-      to: email,
-      otp,
-    });
+      await this.emailQueue.add(
+        'send-otp',
+        {
+          to: email,
+          otp,
+        },
+        {
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 3000 },
+        },
+      );
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   // ───────────────────────────────────────────────

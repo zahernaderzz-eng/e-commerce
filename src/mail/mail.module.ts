@@ -4,7 +4,6 @@ import { ConfigService, ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { MailService } from './mail.service';
 import { MailProcessor } from './email.worker.processor';
-import { redisConnectionOptions } from '../config/redis.config';
 
 @Module({
   imports: [
@@ -26,7 +25,6 @@ import { redisConnectionOptions } from '../config/redis.config';
 
     BullModule.registerQueue({
       name: 'email',
-      connection: redisConnectionOptions,
     }),
   ],
   providers: [MailService, MailProcessor],

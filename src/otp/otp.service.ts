@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { OTP } from './entities/otp.entity';
-import { MoreThan, Repository } from 'typeorm';
+import { EntityManager, MoreThan, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { OTPType } from './type/OTPType';
@@ -68,5 +68,38 @@ export class OTPService {
 
   async deleteOtp(userId: number) {
     await this.otpRepository.delete({ user: { id: userId } });
+  }
+
+  async generateOTPWithManager(
+    manager: EntityManager,
+    user: User,
+    type: OTPType,
+  ) {
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const hashedOTP = await bcrypt.hash(otp, 10);
+    const now = new Date();
+    const expireAt = new Date(now.getTime() + 5 * 60 * 1000);
+
+    const existingOTP = await manager.findOne(OTP, {
+      where: { user: { id: user.id }, type },
+    });
+
+    if (existingOTP) {
+      existingOTP.token = hashedOTP;
+      existingOTP.expireAt = expireAt;
+      await manager.save(OTP, existingOTP);
+    } else {
+      const otpEntity = manager.create(OTP, {
+        user,
+        token: hashedOTP,
+        createdAt: now,
+        type,
+        expireAt,
+      });
+
+      await manager.save(OTP, otpEntity);
+    }
+
+    return otp;
   }
 }
