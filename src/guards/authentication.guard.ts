@@ -12,7 +12,6 @@ export class AuthenticationGuard implements CanActivate {
   constructor(private jwtService: JwtService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    console.log('INSIDE AUTHEN GUARD')
     const request = context.switchToHttp().getRequest();
     const token = this.extractTokenFromHeader(request);
 

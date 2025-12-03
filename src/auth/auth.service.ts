@@ -36,6 +36,7 @@ export class AuthService {
   ) {}
 
   // ───────────────────────────────────────────────
+
   async signup(signupData: SignupDto): Promise<void> {
     const { email, password, name } = signupData;
 
@@ -88,6 +89,7 @@ export class AuthService {
   }
 
   // ───────────────────────────────────────────────
+
   async login(credentials: LoginDto) {
     const { email, password, otp } = credentials;
 
@@ -136,7 +138,7 @@ export class AuthService {
   }
 
   // ───────────────────────────────────────────────
-  //Done
+
   async forgotPassword(email: string): Promise<{ message: string }> {
     const user = await this.userService.findOneBy({ email });
 
@@ -195,7 +197,7 @@ export class AuthService {
   }
 
   // ───────────────────────────────────────────────
-  //Done
+
   async resetPassword(newPassword: string, resetToken: string) {
     const token = await this.resetToken.findOne({
       where: {
@@ -224,61 +226,7 @@ export class AuthService {
   }
 
   // ───────────────────────────────────────────────
-  //Todo
-  async refreshToken(refreshToken: string) {
-    try {
-      const refreshSecret =
-        this.configService.get<string>('JWT_REFRESH_SECRET')!;
-      const decoded = this.jwtService.verify(refreshToken, {
-        secret: refreshSecret,
-      });
 
-      return this.generateUserTokens(decoded.userId);
-    } catch (error) {
-      throw new UnauthorizedException('Invalid or expired refresh token');
-    }
-  }
-
-  // ───────────────────────────────────────────────
-  //Todo
-  async generateUserTokens(userId: number) {
-    const accessSecret = this.configService.get<string>('JWT_ACCESS_SECRET')!;
-    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET')!;
-    const accessExp = this.configService.get<string>('JWT_ACCESS_EXPIRES_IN')!;
-    const refreshExp = this.configService.get<string>(
-      'JWT_REFRESH_EXPIRES_IN',
-    )!;
-
-    const payload: JwtPayload = { userId };
-
-    const accessToken = this.jwtService.sign(payload, {
-      secret: accessSecret,
-      expiresIn: accessExp as any,
-    });
-
-    const refreshToken = this.jwtService.sign(payload, {
-      secret: refreshSecret,
-      expiresIn: refreshExp as any,
-    });
-
-    return { accessToken, refreshToken };
-  }
-
-  // ───────────────────────────────────────────────
-  //Todo
-  async verifyToken(userId: number, token: string) {
-    const valid = await this.otpService.validateOTP(userId, token);
-
-    if (!valid) {
-      throw new BadRequestException('Invalid or expired OTP');
-    }
-
-    await this.otpService.deleteOtp(userId);
-    return true;
-  }
-
-  // ───────────────────────────────────────────────
-  //Done
   async changePassword(
     userId: number,
     oldPassword: string,
@@ -319,7 +267,7 @@ export class AuthService {
   }
 
   // ───────────────────────────────────────────────
-  //Done
+
   async resendOtp(email: string) {
     const user = await this.userService.findOne({
       where: { email },
@@ -341,5 +289,69 @@ export class AuthService {
     });
 
     return { message: 'A new OTP has been sent to your email.' };
+  }
+
+  // ───────────────────────────────────────────────
+
+  async refreshToken(refreshToken: string) {
+    try {
+      const refreshSecret =
+        this.configService.get<string>('JWT_REFRESH_SECRET')!;
+      const decoded = this.jwtService.verify<JwtPayload>(refreshToken, {
+        secret: refreshSecret,
+      });
+      const user = await this.userService.findOneBy({ id: decoded.userId });
+      if (!user || user.accountStatus === 'unverified') {
+        throw new UnauthorizedException('User not found or unverified');
+      }
+
+      return this.generateUserTokens(decoded.userId);
+    } catch (error) {
+      if (error.name === 'TokenExpiredError') {
+        throw new UnauthorizedException('Refresh token expired');
+      }
+      if (error.name === 'JsonWebTokenError') {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+      throw new UnauthorizedException('Token verification failed');
+    }
+  }
+
+  // ───────────────────────────────────────────────
+
+  async generateUserTokens(userId: number) {
+    const accessSecret = this.configService.get<string>('JWT_ACCESS_SECRET')!;
+    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET')!;
+    const accessExp = this.configService.get<string>('JWT_ACCESS_EXPIRES_IN')!;
+    const refreshExp = this.configService.get<string>(
+      'JWT_REFRESH_EXPIRES_IN',
+    )!;
+
+    const payload: JwtPayload = { userId };
+
+    const accessToken = this.jwtService.sign(payload, {
+      secret: accessSecret,
+      expiresIn: accessExp as any,
+    });
+
+    const refreshToken = this.jwtService.sign(payload, {
+      secret: refreshSecret,
+      expiresIn: refreshExp as any,
+    });
+
+    return { accessToken, refreshToken, expiresIn: accessExp };
+  }
+
+  // ───────────────────────────────────────────────
+
+  async verifyToken(userId: number, token: string) {
+    const valid = await this.otpService.validateOTP(userId, token);
+
+    if (!valid) {
+      return false;
+    }
+
+    await this.otpService.deleteOtp(userId);
+    return true;
   }
 }
