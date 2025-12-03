@@ -3,7 +3,6 @@ import {
   BadRequestException,
   UnauthorizedException,
   NotFoundException,
-  InternalServerErrorException,
   ConflictException,
   Logger,
 } from '@nestjs/common';
@@ -13,10 +12,8 @@ import { DataSource, MoreThanOrEqual, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dtos/login.dto';
 import { JwtService } from '@nestjs/jwt';
-
 import { nanoid } from 'nanoid';
 import { ResetToken } from './entities/reset-token-entity';
-import { MailService } from '../mail/mail.service';
 import { OTPService } from '../otp/otp.service';
 import { OTPType } from '../otp/type/OTPType';
 import { UserService } from '../user/user.service';
@@ -25,7 +22,6 @@ import { JwtPayload } from './types/jwt-payload.type';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { User } from '../user/entities/user.entity';
-
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -33,9 +29,7 @@ export class AuthService {
     @InjectRepository(ResetToken) private resetToken: Repository<ResetToken>,
     @InjectQueue('email') private readonly emailQueue: Queue,
     private readonly dataSource: DataSource,
-
     private jwtService: JwtService,
-    private mailService: MailService,
     private otpService: OTPService,
     private userService: UserService,
     private configService: ConfigService,
@@ -83,8 +77,10 @@ export class AuthService {
       );
 
       await queryRunner.commitTransaction();
+      this.logger.log(`User signed up successfully: ${email}`);
     } catch (error) {
       await queryRunner.rollbackTransaction();
+      this.logger.error(`Signup failed for ${email}`, error.stack);
       throw error;
     } finally {
       await queryRunner.release();
@@ -97,23 +93,21 @@ export class AuthService {
 
     const user = await this.userService.findOne({
       where: { email },
-      select: ['id', 'email', 'password', 'name', 'accountStatus'], // IMPORTANT
     });
 
     if (!user) {
-      throw new UnauthorizedException('Wrong credentials');
+      throw new UnauthorizedException('Invalid credentials ');
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
-      throw new UnauthorizedException('Wrong credentials');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Handle OTP verification
     if (user.accountStatus === 'unverified') {
       if (!otp) {
         return {
-          message: 'Your account is not verified. Please provide your OTP.',
+          message: 'Account verification required',
           status: 'UNVERIFIED',
         };
       }
@@ -132,38 +126,67 @@ export class AuthService {
     return {
       message: 'Login successful',
       status: 'VERIFIED',
-      data: {
-        user: { id: user.id },
-        tokens: {
-          access: tokens.accessToken,
-          refresh: tokens.refreshToken,
-        },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
       },
+      ...tokens,
     };
   }
 
   // ───────────────────────────────────────────────
-  async forgotPassword(email: string) {
+  //Done
+  async forgotPassword(email: string): Promise<{ message: string }> {
     const user = await this.userService.findOneBy({ email });
 
     if (user) {
+      const recentToken = await this.resetToken.findOne({
+        where: {
+          userId: user.id,
+          expiryDate: MoreThanOrEqual(new Date()),
+        },
+        order: { id: 'DESC' },
+      });
+
+      if (recentToken) {
+        const ONE_HOUR = 3600000;
+        const FIVE_MINUTES = 300000;
+
+        const createdAt = recentToken.expiryDate.getTime() - ONE_HOUR;
+
+        const diff = Date.now() - createdAt;
+
+        if (diff < FIVE_MINUTES) {
+          this.logger.warn(`Rate limit hit for forgot password: ${email}`);
+          return {
+            message: 'If this user exists, they will receive an email',
+          };
+        }
+      }
+
       const resetToken = nanoid(64);
       const expiryDate = new Date();
       expiryDate.setHours(expiryDate.getHours() + 1);
 
-      await this.resetToken.upsert(
-        {
-          token: resetToken,
-          expiryDate,
-          userId: user.id,
-        },
-        ['userId'],
-      );
+      await this.resetToken.delete({ userId: user.id });
 
-      await this.emailQueue.add('password-reset', {
-        to: email,
+      await this.resetToken.save({
         token: resetToken,
+        expiryDate,
+        userId: user.id,
       });
+      try {
+        await this.emailQueue.add('password-reset', {
+          to: email,
+          token: resetToken,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Failed to queue password reset email: ${email}`,
+          error.stack,
+        );
+      }
     }
 
     return {
@@ -172,37 +195,36 @@ export class AuthService {
   }
 
   // ───────────────────────────────────────────────
+  //Done
   async resetPassword(newPassword: string, resetToken: string) {
     const token = await this.resetToken.findOne({
       where: {
         token: resetToken,
         expiryDate: MoreThanOrEqual(new Date()),
       },
+      relations: ['user'],
     });
 
     if (!token) {
       throw new UnauthorizedException('Invalid or expired reset link');
     }
 
-    await this.resetToken.delete({ id: token.id });
-
-    const user = await this.userService.findOne({
-      where: { id: token.userId },
-      //todo change
-      select: ['id', 'email', 'password', 'name', 'accountStatus'], // IMPORTANT
-    });
-
-    if (!user) {
-      throw new InternalServerErrorException('User not found');
-    }
-
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    user.password = hashedPassword;
-    await this.userService.save(user);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(
+        'user',
+        { id: token.userId },
+        { password: hashedPassword },
+      );
+      await manager.delete(ResetToken, { userId: token.userId });
+    });
+
+    this.logger.log(`Password reset successful for user ID: ${token.userId}`);
   }
 
   // ───────────────────────────────────────────────
+  //Todo
   async refreshToken(refreshToken: string) {
     try {
       const refreshSecret =
@@ -218,6 +240,7 @@ export class AuthService {
   }
 
   // ───────────────────────────────────────────────
+  //Todo
   async generateUserTokens(userId: number) {
     const accessSecret = this.configService.get<string>('JWT_ACCESS_SECRET')!;
     const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET')!;
@@ -238,10 +261,11 @@ export class AuthService {
       expiresIn: refreshExp as any,
     });
 
-    return { accessToken, refreshToken, payload };
+    return { accessToken, refreshToken };
   }
 
   // ───────────────────────────────────────────────
+  //Todo
   async verifyToken(userId: number, token: string) {
     const valid = await this.otpService.validateOTP(userId, token);
 
@@ -254,6 +278,7 @@ export class AuthService {
   }
 
   // ───────────────────────────────────────────────
+  //Done
   async changePassword(
     userId: number,
     oldPassword: string,
@@ -261,7 +286,7 @@ export class AuthService {
   ) {
     const user = await this.userService.findOne({
       where: { id: userId },
-      select: ['id', 'email', 'password', 'name'], // IMPORTANT
+      select: ['id', 'email', 'password'],
     });
 
     if (!user) {
@@ -271,6 +296,13 @@ export class AuthService {
     const passwordMatch = await bcrypt.compare(oldPassword, user.password);
     if (!passwordMatch) {
       throw new UnauthorizedException('Wrong credentials');
+    }
+    const samePassword = await bcrypt.compare(newPassword, user.password);
+
+    if (samePassword) {
+      throw new BadRequestException(
+        'New password must be different from current password',
+      );
     }
 
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
@@ -287,13 +319,14 @@ export class AuthService {
   }
 
   // ───────────────────────────────────────────────
+  //Done
   async resendOtp(email: string) {
     const user = await this.userService.findOne({
       where: { email },
     });
 
     if (!user) {
-      throw new BadRequestException('User not found');
+      return { message: 'If your account exists, a new OTP has been sent' };
     }
 
     if (user.accountStatus === 'verified') {

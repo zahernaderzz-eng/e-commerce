@@ -14,6 +14,7 @@ import { Order } from '../../orders/entities/order.entity';
 import { FcmToken } from '../../fcm-token/entities/fcm-token.entity';
 import { Review } from '../../reviews/entities/review.entity';
 import { Follower } from '../../followers/entities/follower.entity';
+import { Exclude } from 'class-transformer';
 
 @Entity()
 export class User {
@@ -26,11 +27,12 @@ export class User {
   @Column()
   name: string;
 
-  @Column({ select: false })
+  @Column()
+  @Exclude()
   password: string;
 
   @Column({ default: 'unverified' })
-  accountStatus: 'verified' | 'unverified'; //bit 0 1
+  accountStatus: 'verified' | 'unverified';
 
   @ManyToOne(() => Role, (role) => role.users)
   @JoinColumn({ name: 'roleId' })
