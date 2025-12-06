@@ -39,8 +39,8 @@ export class SignupDto {
   @IsString()
   phone?: string;
 
-  @ApiPropertyOptional({ example: '1' })
+  @ApiPropertyOptional({ example: 'New dammita ,Damiita ,Egypt' })
   @IsOptional()
   @IsString()
-  roleId?: string;
+  address?: string;
 }

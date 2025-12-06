@@ -2,16 +2,20 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { Repository } from 'typeorm';
+import { Role } from '../roles/entities/role.entity';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Role)
+    private readonly roleRepo: Repository<Role>,
   ) {}
 
   //
@@ -38,6 +42,20 @@ export class UserService {
 
   async findAll() {
     return this.userRepo.find();
+  }
+  async updateUserRoleByEmail(email: string, roleId: string) {
+    const user = await this.userRepo.findOne({ where: { email } });
+    if (!user) throw new NotFoundException('User not found');
+    const role = await this.roleRepo.findOne({ where: { id: roleId } });
+    if (!role) throw new NotFoundException('Role not found');
+    if (user.role?.name === 'super_admin') {
+      throw new ForbiddenException('Super admin role cannot be changed');
+    }
+    if (role.name === 'super_admin') {
+      throw new ForbiddenException('Cannot assign super_admin role');
+    }
+    await this.userRepo.update(user.id, { role });
+    return { message: 'User role updated successfully' };
   }
 
   async getUserPermissions(userId: number) {

@@ -34,9 +34,24 @@ const SUPER_ADMIN_PERMISSIONS = [
   },
 ];
 
+const CUSTOMER_PERMISSIONS = [
+  {
+    resource: 'products',
+    actions: ['read'],
+  },
+  {
+    resource: 'category',
+    actions: ['read'],
+  },
+];
+
 async function seed() {
   const adminEmail = process.env.INITIAL_ADMIN_EMAIL;
   const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+  const adminName = process.env.SUPER_ADMIN_NAME;
+  const adminPhone = process.env.SUPER_ADMIN_PHONE;
+  const adminAddress = process.env.SUPER_ADMIN_ADDRESS;
+  const adminStatus = process.env.SUPER_ADMIN_STATUS;
 
   if (!adminEmail || !adminPassword) {
     throw new Error(
@@ -50,16 +65,6 @@ async function seed() {
     connection = await AppDataSource.initialize();
 
     await connection.transaction(async (entityManager) => {
-      const existingAdmin = await entityManager.query(
-        `SELECT id FROM "user" WHERE email = $1 LIMIT 1`,
-        [adminEmail],
-      );
-
-      if (existingAdmin.length > 0) {
-        console.log('Super admin already exists');
-        return;
-      }
-
       let roleId: string;
 
       const existingRole = await entityManager.query(
@@ -78,18 +83,45 @@ async function seed() {
         roleId = newRole.id;
       }
 
+      const existingCustomerRole = await entityManager.query(
+        `SELECT id FROM role WHERE name = 'customer' LIMIT 1`,
+      );
+
+      if (existingCustomerRole.length === 0) {
+        await entityManager.query(
+          `INSERT INTO role (name, permissions)
+           VALUES ($1, $2)`,
+          ['customer', JSON.stringify(CUSTOMER_PERMISSIONS)],
+        );
+      }
+
+      const existingAdmin = await entityManager.query(
+        `SELECT id FROM "user" WHERE email = $1 LIMIT 1`,
+        [adminEmail],
+      );
+
+      if (existingAdmin.length > 0) {
+        return;
+      }
+
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
       await entityManager.query(
-        `INSERT INTO "user" (email, password, name, "roleId")
-         VALUES ($1, $2, $3, $4)`,
-        [adminEmail, hashedPassword, 'Super Admin', roleId],
+        `INSERT INTO "user" 
+          (email, password, name, "roleId", phone, address, "accountStatus")
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          adminEmail,
+          hashedPassword,
+          adminName,
+          roleId,
+          adminPhone,
+          adminAddress,
+          adminStatus,
+        ],
       );
-
-      console.log('Super admin created successfully');
     });
   } catch (error) {
-    console.error('Seeding failed:', error.message);
     throw error;
   } finally {
     if (connection?.isInitialized) {

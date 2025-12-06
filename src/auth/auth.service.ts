@@ -23,6 +23,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { User } from '../user/entities/user.entity';
 import { AccountStatus } from '../user/enums/account.status.enum';
+import { Role } from '../roles/entities/role.entity';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -39,7 +40,7 @@ export class AuthService {
   // ───────────────────────────────────────────────
 
   async signup(signupData: SignupDto): Promise<void> {
-    const { email, password, name } = signupData;
+    const { email, password, name, address, phone } = signupData;
 
     const existingUser = await this.userService.findOneBy({ email });
     if (existingUser) {
@@ -53,10 +54,21 @@ export class AuthService {
     await queryRunner.startTransaction();
 
     try {
+      const defaultRole = await queryRunner.manager.findOne(Role, {
+        where: { name: 'customer' },
+      });
+
+      if (!defaultRole) {
+        throw new Error('Default role not found. Make sure roles are seeded.');
+      }
+
       const user = queryRunner.manager.create(User, {
         name,
         email,
         password: hashedPassword,
+        phone,
+        address,
+        roleId: defaultRole.id,
       });
       await queryRunner.manager.save(User, user);
 

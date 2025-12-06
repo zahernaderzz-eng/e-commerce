@@ -42,11 +42,11 @@ export class User {
   })
   accountStatus: AccountStatus;
 
-  @Column({ nullable: true })
+  @Column({ type: 'uuid', nullable: true })
   roleId: string;
 
   @ManyToOne(() => Role, (role) => role.users)
-  @JoinColumn({ name: 'roleId' })
+  @JoinColumn({ name: 'roleId', referencedColumnName: 'id' })
   role: Role;
 
   @OneToMany(() => Product, (product) => product.addedBy)
@@ -80,9 +80,6 @@ export class User {
 
   @Column({ nullable: true })
   phone: string;
-
-  @Column({ nullable: true })
-  avatar: string;
 
   @Column({ nullable: true })
   address: string;
