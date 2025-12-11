@@ -18,8 +18,8 @@ import { EmailQueueService } from './email-queue.service';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         transport: {
-          host: config.get<string>('SMTP_HOST'),
-          port: config.get<number>('SMTP_PORT'),
+          host: 'smtp.gmail.com',
+          port: 587,
           secure: false,
           auth: {
             user: config.get<string>('SMTP_USERNAME'),
