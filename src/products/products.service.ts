@@ -9,7 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { CategoriesService } from '../categories/categories.service';
-import { CloudinaryService } from '../cloudianry/cloudinary.service';
+import { CloudinaryService } from '../infrastructure/cloudianry/cloudinary.service';
 import { ProductImage } from './entities/product-image.entity';
 import { FollowersService } from '../followers/followers.service';
 import { NotificationService } from '../notification/notification.service';

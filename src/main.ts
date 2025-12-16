@@ -6,7 +6,7 @@ import * as bodyParser from 'body-parser';
 import { ResponseInterceptor } from './response/response.interceptor';
 import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { initFirebaseAdmin } from './firebase/firebase-admin';
+import { initFirebaseAdmin } from './infrastructure/firebase/firebase-admin';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {

@@ -5,7 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Product } from './entities/product.entity';
 import { ProductImage } from './entities/product-image.entity';
 import { CategoriesModule } from '../categories/categories.module';
-import { CloudinaryModule } from '../cloudianry/cloudinary.module';
+import { CloudinaryModule } from '../infrastructure/cloudianry/cloudinary.module';
 import { UserModule } from '../user/user.module';
 import { FollowersModule } from '../followers/followers.module';
 import { NotificationModule } from '../notification/notification.module';

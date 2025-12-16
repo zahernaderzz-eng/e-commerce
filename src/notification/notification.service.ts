@@ -8,7 +8,7 @@ import * as admin from 'firebase-admin';
 import { Notification } from './entities/notification.entity';
 import { FcmTokenService } from '../fcm-token/fcm-token.service';
 import { NotificationQueryDto } from './dto/notification-query.dto';
-import { getMessaging } from '../firebase/firebase-admin';
+import { getMessaging } from '../infrastructure/firebase/firebase-admin';
 
 @Injectable()
 export class NotificationService {
