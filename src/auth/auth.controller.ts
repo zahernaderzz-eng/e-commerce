@@ -5,8 +5,6 @@ import {
   HttpStatus,
   Patch,
   Post,
-  Put,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
@@ -26,6 +24,7 @@ import {
 import { ResendOtpDto } from './dtos/request.OTP.dto';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../decorators/current-user.decorator';
+import { Transaction } from 'typeorm';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -59,7 +58,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Resend OTP for unverified accounts' })
   @ApiResponse({ status: 200, description: 'OTP sent' })
   async resendOtp(@Body() resendOtpDto: ResendOtpDto) {
-    return this.authService.resendOtp(resendOtpDto.email);
+    return this.authService.resendOtp(resendOtpDto);
   }
 
   @Post('refresh')
@@ -81,11 +80,7 @@ export class AuthController {
     @Body() changePasswordDto: ChangePasswordDto,
     @CurrentUser() userId: number,
   ) {
-    return this.authService.changePassword(
-      userId,
-      changePasswordDto.oldPassword,
-      changePasswordDto.newPassword,
-    );
+    return this.authService.changePassword(userId, changePasswordDto);
   }
 
   @Post('forgot-password')

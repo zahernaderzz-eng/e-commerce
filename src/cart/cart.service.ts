@@ -1,6 +1,4 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { UpdateItemDto } from './dto/update-item.dto';
-
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cart } from './entities/cart.entity';
@@ -15,7 +13,6 @@ export class CartService {
   constructor(
     @InjectRepository(Cart) private cartRepo: Repository<Cart>,
     @InjectRepository(CartItem) private cartItemRepo: Repository<CartItem>,
-    private userService: UserService,
     private productService: ProductsService,
   ) {}
   async getOrCreateCart(userId: number) {

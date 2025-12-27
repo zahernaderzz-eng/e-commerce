@@ -1,6 +1,6 @@
 // src/entities/index.ts
 import { User } from '../user/entities/user.entity';
-import { ResetToken } from '../auth/entities/reset-token-entity';
+import { ResetToken } from '../auth/Repository/entities/reset-token-entity';
 import { OTP } from '../otp/entities/otp.entity';
 import { Role } from '../roles/entities/role.entity';
 import { Category } from '../categories/entities/category.entity';

@@ -7,7 +7,7 @@ import {
   CreateDateColumn,
   Index,
 } from 'typeorm';
-import { User } from '../../user/entities/user.entity';
+import { User } from '../../../user/entities/user.entity';
 
 @Entity('reset_tokens')
 @Index(['userId', 'expiryDate'])

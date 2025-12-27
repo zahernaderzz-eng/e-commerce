@@ -63,7 +63,7 @@ export class OTPService {
       throw new BadRequestException('OTP is invalid, please try again');
     }
 
-    return true;
+    await this.deleteOtp(userId);
   }
 
   async deleteOtp(userId: number) {
